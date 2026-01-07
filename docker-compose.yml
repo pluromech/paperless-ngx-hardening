@@ -1,0 +1,97 @@
+services:
+  redis:
+    container_name: ${COMPOSE_PROJECT_NAME}-redis
+    image: docker.io/library/redis:7
+    restart: unless-stopped
+    volumes:
+      - paperless_redis_data:/data
+    networks:
+      - internal
+
+  postgres:
+    container_name: ${COMPOSE_PROJECT_NAME}-postgres
+    image: docker.io/library/postgres:17
+    restart: unless-stopped
+    volumes:
+      - paperless_pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: paperless
+    networks:
+      - internal
+
+  app:
+    container_name: ${COMPOSE_PROJECT_NAME}-app
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - gotenberg
+      - tika
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - paperless_export:/usr/src/paperless/export
+      - paperless_consume:/usr/src/paperless/consume
+      - ./rus.traineddata:/usr/share/tesseract-ocr/5/tessdata/rus.traineddata
+      - ./ukr.traineddata:/usr/share/tesseract-ocr/5/tessdata/ukr.traineddata
+    environment:
+      PAPERLESS_URL: https://${PAPERLESS_HOST}:${PAPERLESS_PORT}
+      PAPERLESS_REDIS: redis://${COMPOSE_PROJECT_NAME}-redis:6379
+      PAPERLESS_DBHOST: ${COMPOSE_PROJECT_NAME}-postgres
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://${COMPOSE_PROJECT_NAME}-gotenberg:3000
+      PAPERLESS_TIKA_ENDPOINT: http://${COMPOSE_PROJECT_NAME}-tika:9998
+    networks:
+      - internal
+
+  gotenberg:
+    container_name: ${COMPOSE_PROJECT_NAME}-gotenberg
+    image: docker.io/gotenberg/gotenberg:8.19
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    networks:
+      - internal
+
+  tika:
+    container_name: ${COMPOSE_PROJECT_NAME}-tika
+    image: docker.io/apache/tika:latest
+    restart: unless-stopped
+    networks:
+      - internal
+
+  caddy:
+    container_name: ${COMPOSE_PROJECT_NAME}-caddy
+    image: caddy:2
+    ports:
+      - "${PAPERLESS_PORT}:${PAPERLESS_PORT}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - paperless_caddy_data:/data
+      - paperless_caddy_config:/config
+    networks:
+      - internal
+      - external
+    restart: unless-stopped
+
+volumes:
+  paperless_data:
+  paperless_media:
+  paperless_pgdata:
+  paperless_redis_data:
+  paperless_export:
+  paperless_consume:
+  paperless_caddy_data:
+  paperless_caddy_config:
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  external:
+    driver: bridge

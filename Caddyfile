@@ -1,0 +1,4 @@
+PAPERLESS_HOST:PAPERLESS_PORT {
+  reverse_proxy COMPOSE_PROJECT_NAME-app:8000
+  tls internal
+}
